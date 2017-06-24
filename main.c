@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include "resource.h"
 #include "wrapper.h"
 #include "List.h"
@@ -17,11 +18,9 @@
 /*START ---- Globals*/
 int lpc = 0;
 int cid = 0;
-char newDisplayText[30];
-char *curProcID;
-BOOL readMessage, updatePlanet;
-HWND newPlanetEdits[7];
-HWND planetStatusHandles[3];
+char counter_text[30];
+char *cur_proc_id;
+BOOL readMessage;
 HWND hDlgs[2];
 HWND curFoc, curInactiveFoc;
 HANDLE clientMailslotHandle, mailslotC, mailslotS;
@@ -30,110 +29,121 @@ List *planetsToBeAdded;
 LPCRITICAL_SECTION crit;
 /*END ---- Globals*/
 
+void CleanUp(int num, ...)
+{
+	va_list valist;
+
+	va_start(valist, num);
+
+	for (int i = 0; i < num; i++) {
+		free(va_arg(valist, void*));
+	}
+
+	va_end(valist);
+}
+
 /*Planet status dialog helper functions - START*/
 
-BOOL sendHelperFunc()
+BOOL sendHelperFunc(HWND hDlg)
 {
-	int selItemCount = SendMessage(planetStatusHandles[1], LB_GETSELCOUNT, 0, 0);
-	int *indexes = malloc(sizeof(int)*selItemCount);
-	SendMessage(planetStatusHandles[1], LB_GETSELITEMS, selItemCount, indexes);
-	char* nameHolder = NULL;
-	int iLen = 0;
-	planet_type* currentPlanetTmp1 = NULL;
-	planet_type* currentPlanetTmp2 = NULL;
-	for (int i = (selItemCount - 1); i >= 0; i--)
+	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0);
+	int *indexes = malloc(sizeof(int) * item_count);
+	SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELITEMS, item_count, indexes);
+	char* planet_name = NULL;
+	int name_len = 0;
+	planet_type* cur_planet = NULL;
+	for (int i = (item_count - 1); i >= 0; i--)
 	{
 		//Take the selected planets and send them one-by-one to the server for processing.
-		currentPlanetTmp2 = (planet_type*)malloc(sizeof(planet_type));
-		iLen = SendMessage(planetStatusHandles[1], LB_GETTEXTLEN, indexes[i], 0);
-		nameHolder = malloc(sizeof(char)*iLen + 1);
-		SendMessage(planetStatusHandles[1], LB_GETTEXT, indexes[i], nameHolder);
-		currentPlanetTmp1 = GetPlanet(localPlanetList, curProcID, nameHolder);
-		memcpy(currentPlanetTmp2, currentPlanetTmp1, sizeof(planet_type));
-		mailslotWrite(mailslotS, currentPlanetTmp2, sizeof(planet_type));
-		SendMessage(planetStatusHandles[0], LB_ADDSTRING, 0, nameHolder); //Add to sent planets list.
-		SendMessage(planetStatusHandles[1], LB_DELETESTRING, indexes[i], 0); //Delete from local planets list.
+		planet_name = malloc(sizeof(char) * name_len);
+		cur_planet = malloc(sizeof(planet_type*));
+		name_len = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXTLEN, indexes[i], 0);
+		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXT, indexes[i], planet_name);
+		memcpy(GetPlanet(localPlanetList, cur_proc_id, planet_name), cur_planet, sizeof(planet_type));
+		mailslotWrite(mailslotS, cur_planet, sizeof(planet_type));
+		SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_ADDSTRING, 0, planet_name);
+		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, indexes[i], 0);
+		CleanUp(2, planet_name, cur_planet);
 		lpc--;
-		free(currentPlanetTmp2);
-		//Destroy_Item(localPlanetList, curProcID, nameHolder);
-		free(nameHolder);
 	}
-	sprintf(newDisplayText, "Number of Local Planets: %d", lpc);
-	SetWindowText(planetStatusHandles[2], newDisplayText);
-	free(indexes);
+	sprintf(counter_text, "Number of Local Planets: %d", lpc);
+	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
+	CleanUp(1, indexes);
 	return TRUE;
 }
 
 BOOL loadFile()
 {
-	BOOL read = TRUE;
-	char fileName[50];
-	DWORD bytesRead;
-	HANDLE fileHandle = OpenFileDialog("Solsystem", GENERIC_READ, OPEN_EXISTING);
-	if (fileHandle == INVALID_HANDLE_VALUE)
+	BOOL read = TRUE, success;
+	DWORD bytes_read;
+	HANDLE file_handle = OpenFileDialog(NULL, GENERIC_READ, OPEN_EXISTING);
+	if (file_handle == INVALID_HANDLE_VALUE)
 	{
 		return FALSE;
 	}
 	else
-	{		
-		if (localPlanetList == NULL)
-		{
+	{	
+		//if no list exists
+		if (localPlanetList == NULL) {
 			localPlanetList = Create_List();
 		}
-		planet_type *pbuf = (planet_type*)malloc(sizeof(planet_type));
-		while (read)
-		{
-			ReadFile(fileHandle, pbuf, sizeof(planet_type), &bytesRead, NULL);
-			if (bytesRead > 0)
-			{
-				Add_Item_Last(localPlanetList, *pbuf);
-				free(pbuf);
-				pbuf = (planet_type*)malloc(sizeof(planet_type));
+		//allocate for planets until there's no more. planets are read one at the time
+		planet_type *planet_buffer = malloc(sizeof(planet_type*));
+
+		while (read) {
+
+			//returns true if read success else returns false
+			success = ReadFile(file_handle, planet_buffer, sizeof(planet_type*), &bytes_read, NULL);
+
+			if (bytes_read > 0 && success) {
+				Add_Item_Last(localPlanetList, *planet_buffer);
+				free(planet_buffer);
+				planet_buffer = malloc(sizeof(planet_type*));
 			}
-			else
+			//else read has failed.
+			else {
 				read = FALSE;
-			
+			}
+
 		}
 		return TRUE;
 	}	
 }
 
-BOOL saveFile()
+BOOL saveFile(HWND hDlg)
 {
-	HANDLE fileHandle = OpenFileDialog("Solsystem", GENERIC_WRITE, CREATE_NEW);
-	if (fileHandle == INVALID_HANDLE_VALUE)
-	{
+	HANDLE file_handle = OpenFileDialog(NULL, GENERIC_WRITE, CREATE_NEW);
+	DWORD bytesWritten = 0;
+	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0), txt_len = 0;
+	int *indexes = malloc(sizeof(int*) * item_count);
+	char* planet_name = NULL;
+	planet_type *temp = NULL, *planet_buffer = NULL;
+
+	if (file_handle == INVALID_HANDLE_VALUE) {
 		return FALSE;
 	}
 	
-	else
-	{	
-		DWORD bytesWritten;
-		int selCount = SendMessage(planetStatusHandles[1], LB_GETSELCOUNT, 0, 0), txtlen = 0;
-		int *indexes = (int*)malloc(sizeof(int)*selCount);
-		char* planetName = NULL;
-		planet_type *temp = NULL;
-		
-		if (selCount > 1)
-		{			
-			SendMessage(planetStatusHandles[1], LB_GETSELITEMS, selCount, indexes);
+	else {	
+		//if any item is selected in the list
+		if (item_count > 1) {
+			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELITEMS, item_count, indexes);
 		}
-		else
-		{
-			SendMessage(planetStatusHandles[1], LB_SETSEL, TRUE, -1);
-			SendMessage(planetStatusHandles[1], LB_GETSELITEMS, selCount, indexes);
+		else {
+			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_SETSEL, TRUE, -1);
+			item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETCOUNT, 0, 0);
+			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELITEMS, item_count, indexes);
 		}
-		for (int i = 0; i < selCount; i++)
-		{
-			planet_type *pbuf = (planet_type*)malloc(sizeof(planet_type));
-			txtlen = SendMessage(newPlanetEdits[0], LB_GETTEXTLEN, indexes[i], NULL);
-			planetName = (char*)malloc(sizeof(char)*txtlen);
-			SendMessage(newPlanetEdits[0], LB_GETTEXT, indexes[i], planetName);
-			temp = GetPlanet(localPlanetList, curProcID, planetName);
-			memcpy(pbuf, temp, sizeof(planet_type));
-			WriteFile(fileHandle, pbuf, sizeof(planet_type), &bytesWritten, NULL);
-			free(pbuf);
+
+		for (int i = 0; i < item_count; i++) {
+			planet_buffer = malloc(sizeof(planet_type*));
+			txt_len = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXTLEN, indexes[i], NULL);
+			planet_name = malloc(sizeof(char*) * txt_len);
+			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXT, indexes[i], planet_name);
+			memcpy(planet_buffer, GetPlanet(localPlanetList, cur_proc_id, planet_name), sizeof(planet_type*));
+			WriteFile(file_handle, planet_buffer, sizeof(planet_type*), &bytesWritten, NULL);
+			free(planet_buffer);
 		}
+
 		return TRUE;
 	}
 }
@@ -142,97 +152,120 @@ BOOL saveFile()
 
 /*New planet dialog helper functions - START*/
 
+//Copies each node from the list a to list b
+void CopyList(List *a, List *b)
+{
+	planet_type *node_ptr_a = a->Head;
+	
+	while (node_ptr_a != NULL) {
+		Add_Item_Last(b, *node_ptr_a);
+		node_ptr_a = node_ptr_a->next;
+	}
+	return;
+}
+
+//Function that is used for freeing resources. Takes an arbitary amount of arguments and frees them
+
+void ResetNewPlanetEdits(HWND hDlg)
+{
+	SetWindowText(GetDlgItem(hDlg, P_NAME_EDIT), "");
+	SetWindowText(GetDlgItem(hDlg, MASS_EDIT), "");
+	SetWindowText(GetDlgItem(hDlg, POS_X_EDIT), "");
+	SetWindowText(GetDlgItem(hDlg, POS_Y_EDIT), "");
+	SetWindowText(GetDlgItem(hDlg, VEL_X_EDIT), "");
+	SetWindowText(GetDlgItem(hDlg, VEL_Y_EDIT), "");
+	SetWindowText(GetDlgItem(hDlg, LIFE_EDIT), "");
+	return;
+}
+
 BOOL doneHelperFunc(HWND hDlg)
 {
-	char *txtHolder = NULL;
-	planet_type *planetTmp1 = NULL, *planetTmp2 = NULL;
-	int selCount = SendMessage(newPlanetEdits[0], LB_GETSELCOUNT, 0, 0), txtlen = 0, ret = 0;
+	char *string_buffer = NULL;
+	planet_type *cur_planet = NULL;
+	int item_count = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETSELCOUNT, 0, 0), string_len = 0, ret = 0;
 	int *indexes = NULL;
-
-	if (localPlanetList == NULL)
-	{
+	if (localPlanetList == NULL) {
 		localPlanetList = Create_List();
 	}
 	/*All planets or selected ones.*/
-	if (selCount < 1)
+	if (item_count < 1)
 	{
-		selCount = SendMessage(newPlanetEdits[0], LB_GETCOUNT, 0, 0);
-		indexes = (int)malloc(sizeof(int)*selCount);
-		ret = SendMessage(newPlanetEdits[0], LB_SETSEL, TRUE, -1);
+		//get number of items in listbox
+		item_count = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETCOUNT, 0, 0);
+		indexes = malloc(sizeof(int*) * item_count);
+		//select all the items in the list
+		ret = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_SETSEL, TRUE, -1);
+
 		if (ret == LB_ERR)
 		{
 			MessageBox(hDlg, TEXT("LB_SETSEL return LB_ERR"), TEXT("ERROR"), (MB_ICONERROR | MB_OK));
 			return FALSE;
 		}
-		ret = SendMessage(newPlanetEdits[0], LB_GETSELITEMS, selCount, indexes);
+
+		ret = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETSELITEMS, item_count, indexes);
+
 		if (ret == LB_ERR)
 		{
 			MessageBox(hDlg, TEXT("LB_GETSELITEMS return LB_ERR"), TEXT("ERROR"), (MB_ICONERROR | MB_OK));
 			return FALSE;
 		}
-		memcpy(localPlanetList, planetsToBeAdded, (sizeof(planet_type)*planetsToBeAdded->Size)); free(indexes);
-		for (int i = 1; i < 7; ++i)
-		{
-			SetWindowText(newPlanetEdits[i], "");
-		}
+		CopyList(planetsToBeAdded, localPlanetList);
+		ResetNewPlanetEdits(hDlg);
 		return TRUE;
 	}
-	else
-	{
-		indexes = (int)malloc(sizeof(int)*selCount);
-		ret = SendMessage(newPlanetEdits[0], LB_GETSELITEMS, selCount, indexes);
-		if (ret == LB_ERR)
-		{
+	else {
+		indexes = malloc(sizeof(int*)*item_count);
+
+		ret = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETSELITEMS, item_count, indexes);
+
+		if (ret == LB_ERR) {
 			MessageBox(hDlg, TEXT("LB_GETSELITEMS return LB_ERR"), TEXT("ERROR"), (MB_ICONERROR | MB_OK));
 			return FALSE;
 		}
 	}
-
-	for (int i = (selCount - 1); i >= 0; i--)
+	//work from down upwards due to dynamic index alteration
+	for (int i = (item_count - 1); i >= 0; i--)
 	{
 		//Take selected planets and add them to the local storage list.
-		planetTmp2 = (planet_type*)malloc(sizeof(planet_type));
-		txtlen = SendMessage(newPlanetEdits[0], LB_GETTEXTLEN, indexes[i], NULL);
-		if (txtlen == LB_ERR)
-		{
+		string_len = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETTEXTLEN, indexes[i], NULL);
+		if (string_len == LB_ERR) {
 			MessageBox(hDlg, TEXT("Index parameter is invaild!"), TEXT("ERROR"), (MB_ICONERROR | MB_OK));
 			free(indexes);
 			return FALSE;
 		}
-		txtHolder = (char*)malloc(sizeof(char)*txtlen + 1);
-		SendMessage(newPlanetEdits[0], LB_GETTEXT, indexes[i], txtHolder);
-		/*planetTmp1 = GetPlanet(planetsToBeAdded, curProcID, txtHolder);	
-		memcpy(planetTmp2, planetTmp1, sizeof(planet_type));
-		Add_Item_Last(localPlanetList, *planetTmp2);*/
-		
-		SendMessage(newPlanetEdits[0], LB_DELETESTRING, indexes[i], 0);
-		//Destroy_Item(planetsToBeAdded, curProcID, txtHolder);
-		free(planetTmp2);
+
+		string_buffer = malloc(sizeof(char*) * string_len + 1);
+		ret = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETTEXT, indexes[i], string_buffer);
+
+		if (ret == LB_ERR) {
+			MessageBox(hDlg, TEXT("Error when getting text from lb."), TEXT("ERROR"), (MB_ICONERROR | MB_OK));
+			free(indexes);
+			return FALSE;
+		}
+		else {
+			cur_planet = GetPlanet(planetsToBeAdded, cur_proc_id, string_buffer);
+			Add_Item_Last(localPlanetList, *cur_planet);
+			SendDlgItemMessage(hDlg, CURSOL_LIST, LB_DELETESTRING, indexes[i], NULL);
+			Destroy_Item(planetsToBeAdded, cur_proc_id, string_buffer);
+		}	
 	}
-	memcpy(localPlanetList, planetsToBeAdded, (sizeof(planet_type)*planetsToBeAdded->Size));
-	free(indexes);
-	for (int i = 1; i < 7; ++i)
-	{
-		SetWindowText(newPlanetEdits[i], "");
-	}
+	ResetNewPlanetEdits(hDlg);
+	CleanUp(3, string_buffer, cur_planet, indexes);
 	return TRUE;
 }
 
 BOOL deleteHelperFunc(HWND hDlg)
 {
-	int selCount = SendMessage(newPlanetEdits[0], LB_GETSELCOUNT, 0, 0);
-	int *indexes = (int*)malloc(sizeof(int)*selCount);
-	char* txtHolder;
-	int txtlen = 0;
-	SendMessage(newPlanetEdits[0], LB_GETSELITEMS, selCount, indexes);
-	if (selCount < 1)
+	int item_count = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETSELCOUNT, 0, 0);
+	int *indexes = malloc(sizeof(int*) * item_count);
+	char* string_buffer = NULL;
+	int string_len = 0;
+	if (item_count < 1)
 	{
 		//If the user has not selected any planet, prompt question, if yes delete all planets
-		if (MessageBox(hDlg, TEXT("Delete all the planets?"), TEXT("Close"),
-			MB_ICONQUESTION | MB_YESNO) == IDYES)
-		{
+		if (MessageBox(hDlg, TEXT("Delete all the planets?"), TEXT("Close"), MB_ICONQUESTION | MB_YESNO) == IDYES) {
 			Delete_List(planetsToBeAdded);
-			SendMessage(newPlanetEdits[0], LB_RESETCONTENT, 0, 0);
+			SendDlgItemMessage(hDlg, CURSOL_LIST, LB_RESETCONTENT, 0, 0);
 			MessageBox(hDlg, TEXT("Items were deleted."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
 			free(indexes);
 			return TRUE;
@@ -240,21 +273,21 @@ BOOL deleteHelperFunc(HWND hDlg)
 	}
 	else
 	{
-		for (int i = (selCount - 1); i >= 0; i--)
+		for (int i = (item_count - 1); i >= 0; i--)
 		{
 			//Delete the selected items from the list.
-			txtlen = SendMessage(newPlanetEdits[0], LB_GETTEXTLEN, indexes[i], (LPARAM)NULL);
-			if (txtlen == LB_ERR)
+			string_len = SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETTEXTLEN, indexes[i], NULL);
+			if (string_len == LB_ERR)
 			{
 				MessageBox(hDlg, TEXT("Index parameter is invaild!"), TEXT("ERROR"), (MB_ICONERROR | MB_OK));
 				free(indexes);
 				return TRUE;
 			}
-			txtHolder = (char*)malloc(sizeof(char)*txtlen + 1);
-			SendMessage(newPlanetEdits[0], LB_GETTEXT, indexes[i], txtHolder);
-			Destroy_Item(planetsToBeAdded, curProcID, txtHolder);
-			SendMessage(newPlanetEdits[0], LB_DELETESTRING, indexes[i], 0);
-			free(txtHolder);
+			string_buffer = malloc(sizeof(char*)*string_len + 1);
+			SendDlgItemMessage(hDlg, CURSOL_LIST, LB_GETTEXT, indexes[i], string_buffer);
+			Destroy_Item(planetsToBeAdded, cur_proc_id, string_buffer);
+			SendDlgItemMessage(hDlg, CURSOL_LIST, LB_DELETESTRING, indexes[i], 0);
+			free(string_buffer);
 		}
 		free(indexes);
 		return TRUE;
@@ -264,55 +297,51 @@ BOOL deleteHelperFunc(HWND hDlg)
 BOOL addHelperFunc(HWND hDlg)
 {
 	//Take info from all the editboxes and add them to a new planet item, then add to list.
-	char *str = (char*)malloc(sizeof(char) * 20);
-	planet_type *newPlanet = (planet_type*)malloc(sizeof(planet_type));
-	GetWindowText(newPlanetEdits[1], str, 20);
-	SendMessage(newPlanetEdits[0], LB_ADDSTRING, 0, (LPARAM)str);
-	strcpy(newPlanet->name, str);
-	GetWindowText(newPlanetEdits[2], str, 20);
-	newPlanet->life = atoi(str);
-	GetWindowText(newPlanetEdits[3], str, 20);
-	newPlanet->mass = atof(str);
-	GetWindowText(newPlanetEdits[4], str, 20);
-	newPlanet->sx = atof(str);
-	GetWindowText(newPlanetEdits[5], str, 20);
-	newPlanet->sy = atof(str);
-	GetWindowText(newPlanetEdits[6], str, 20);
-	newPlanet->vx = atof(str);
-	GetWindowText(newPlanetEdits[7], str, 20);
-	newPlanet->vy = atof(str);
-	strcpy(newPlanet->pid, curProcID);
+	char *str = malloc(sizeof(char*) * 20);
+	planet_type *new_planet = malloc(sizeof(planet_type*));
+	GetWindowText(GetDlgItem(hDlg, P_NAME_EDIT), str, 20);
+	SendDlgItemMessage(hDlg, CURSOL_LIST, LB_ADDSTRING, 0, str);
+	strcpy(new_planet->name, str);
+	GetWindowText(GetDlgItem(hDlg, MASS_EDIT), str, 20);
+	new_planet->life = atoi(str);
+	GetWindowText(GetDlgItem(hDlg, POS_X_EDIT), str, 20);
+	new_planet->mass = atof(str);
+	GetWindowText(GetDlgItem(hDlg, POS_Y_EDIT), str, 20);
+	new_planet->sx = atof(str);
+	GetWindowText(GetDlgItem(hDlg, VEL_X_EDIT), str, 20);
+	new_planet->sy = atof(str);
+	GetWindowText(GetDlgItem(hDlg, VEL_Y_EDIT), str, 20);
+	new_planet->vx = atof(str);
+	GetWindowText(GetDlgItem(hDlg, LIFE_EDIT), str, 20);
+	new_planet->vy = atof(str);
+	strcpy(new_planet->pid, cur_proc_id);
 	if (planetsToBeAdded == NULL)
 	{
 		planetsToBeAdded = Create_List();
 	}
-	Add_Item_Last(planetsToBeAdded, *newPlanet);
-	free(newPlanet);
-	free(str);
-	for (int i = 1; i < 7; i++)
-	{
-		SetWindowText(newPlanetEdits[i], "");
-	}
+	Add_Item_Last(planetsToBeAdded, *new_planet);
+	CleanUp(2, new_planet, str);
+	ResetNewPlanetEdits(hDlg);
 	return TRUE;
 }
 
-BOOL loadPlanetsHelperFunc()
+BOOL loadPlanetsHelperFunc(HWND hDlg)
 {
 	planet_type *iterator = localPlanetList->Head;
-	char *pName = NULL;
-	SendMessage(planetStatusHandles[1], LB_RESETCONTENT, 0, 0);
+	char *planet_name = NULL;
+	SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_RESETCONTENT, 0, 0);
 	lpc = 0;
 	while (iterator != NULL)
 	{
-		pName = (char*)malloc(sizeof(char)*strlen(iterator->name));
-		strcpy(pName, iterator->name);
-		pName = iterator->name;
-		SendMessage(planetStatusHandles[1], LB_ADDSTRING, 0, pName);
+		planet_name = malloc(sizeof(char*) * strlen(iterator->name));
+		strcpy(planet_name, iterator->name);
+		planet_name = iterator->name;
+		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_ADDSTRING, 0, planet_name);
 		iterator = iterator->next;
 		lpc++;
 	}
-	sprintf(newDisplayText, "Number of Local Planets: %d", lpc);
-	SetWindowText(planetStatusHandles[2], newDisplayText);
+	sprintf(counter_text, "Number of Local Planets: %d", lpc);
+	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
 	return TRUE;
 }
 /*New planet dialog helper functions - END*/
@@ -324,22 +353,18 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 	{
 		case WM_INITDIALOG:
 		{
-			planetStatusHandles[0] = GetDlgItem(hDlg, ALIVE_SENT_LB);
-			planetStatusHandles[1] = GetDlgItem(hDlg, LOCAL_PLANETS_LB);
-			planetStatusHandles[2] = GetDlgItem(hDlg, PLANET_COUNTER_EB);
-			planetStatusHandles[3] = GetDlgItem(hDlg, SERV_MSG_LIST);
-			SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, "Connecting to server...");
+			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connecting to server...");
 			mailslotS = mailslotConnect("mailbox");
 			if (mailslotS != INVALID_HANDLE_VALUE)
 			{
-				SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, "Connection to server succeded.");
+				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to server succeded.");
 			}
 			else
 			{
-				SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, "Connection to server failed...");
+				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to server failed.");
 			}
-			sprintf(newDisplayText, "Number of Local Planets: %d", lpc);
-			SetWindowText(planetStatusHandles[2], newDisplayText);
+			sprintf(counter_text, "Number of Local Planets: %d", lpc);
+			SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
 			return TRUE;
 			break;
 		}		
@@ -350,7 +375,7 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 			{
 			case SEND_BUTTON:
 			{
-				if (sendHelperFunc())
+				if (sendHelperFunc(hDlg))
 				{
 					MessageBox(hDlg, TEXT("Planet/Planets were sent to server successfully."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
 				}
@@ -378,7 +403,7 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 			}
 			case SAVE_BUTTON:
 			{				
-				if (saveFile())
+				if (saveFile(hDlg))
 				{
 					MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Save to file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
 					return TRUE;
@@ -396,9 +421,8 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 
 		case MY_UPDATE_ALIVE:
 		{
-			int index = SendMessage(planetStatusHandles[0], LB_FINDSTRING, -1, wParam);
-			SendMessage(planetStatusHandles[0], LB_DELETESTRING, index, 0);
-			//SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, lparam);
+			int index = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_FINDSTRING, -1, wParam);
+			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, index, 0);;
 			return TRUE;
 			break;
 		}
@@ -413,13 +437,13 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 				result = mailslotRead(mailslotC, &msg, nextMsgSize);
 				if (result > 1)
 				{
-					SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, "Failure reading from mailslot. Bytes read were lesser than 1.");
+					SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Failure reading from mailslot. Bytes read were lesser than 1.");
 					return FALSE;
 				}
 
 				else
 				{
-					SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, msg.Message);
+					SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, msg.Message);
 					EnterCriticalSection(&crit);
 					readMessage = FALSE;
 					LeaveCriticalSection(&crit);
@@ -428,7 +452,7 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 			}
 			else
 			{
-				SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, "GetMailSlotInfo failed, returned zero.");
+				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "GetMailSlotInfo failed, returned zero.");
 				return FALSE;
 			}
 			break;
@@ -436,7 +460,7 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 	
 		case MY_LOAD_PLANETS:
 		{
-			if (loadPlanetsHelperFunc())
+			if (loadPlanetsHelperFunc(hDlg))
 			{
 				return TRUE;
 			}
@@ -449,8 +473,7 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 
 		case WM_CLOSE:
 		{
-			if (MessageBox(hDlg, TEXT("Close the program?"), TEXT("Close"),
-				MB_ICONQUESTION | MB_YESNO) == IDYES)
+			if (MessageBox(hDlg, TEXT("Close the program?"), TEXT("Close"),	MB_ICONQUESTION | MB_YESNO) == IDYES)
 			{
 				DestroyWindow(hDlg);
 			}
@@ -463,31 +486,24 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 			PostQuitMessage(0);
 			return TRUE;
 			break;
-		}	
+		}
+
+		default:
+		{
+			return FALSE;
+			break;
+		}
+			
 	}
-	return FALSE;
 }
 /*New planet Dialog Window(the secondary dialog)*/
 INT_PTR CALLBACK newPlanetDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM lparam)
 {
 	switch (uMsg)
 	{
-		case WM_INITDIALOG:
-		{
-			newPlanetEdits[0] = GetDlgItem(hDlg, CURSOL_LIST);
-			newPlanetEdits[1] = GetDlgItem(hDlg, P_NAME_EDIT);
-			newPlanetEdits[2] = GetDlgItem(hDlg, LIFE_EDIT);
-			newPlanetEdits[3] = GetDlgItem(hDlg, MASS_EDIT);
-			newPlanetEdits[4] = GetDlgItem(hDlg, POS_X_EDIT);
-			newPlanetEdits[5] = GetDlgItem(hDlg, POS_Y_EDIT);
-			newPlanetEdits[6] = GetDlgItem(hDlg, VEL_X_EDIT);
-			newPlanetEdits[7] = GetDlgItem(hDlg, VEL_Y_EDIT);
-			return TRUE;
-			break;
-		}
 		case WM_COMMAND:
 		{
-			switch (wParam)
+			switch (LOWORD(wParam))
 			{
 				case DONE_BUTTON:
 				{
@@ -538,7 +554,7 @@ INT_PTR CALLBACK newPlanetDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
 		}
 		case MY_LOAD_PLANETS:
 		{
-			if (loadPlanetsHelperFunc())
+			if (loadPlanetsHelperFunc(hDlg))
 			{
 				return TRUE;
 			}
@@ -548,20 +564,25 @@ INT_PTR CALLBACK newPlanetDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
 			}
 			break;
 		}
+
+		default:
+		{
+			return FALSE;
+			break;
+		}
 	}
-		return FALSE;
 }
 /*Function run on seperate thread, listning on client mailslot.*/
-void mailslotListener(char* procId)
+void mailslotListener(char* proc_id)
 {
-	DWORD msgCount = 0, result = 0;
-	clientMailslotHandle = mailslotCreate(procId);
+	DWORD msg_count = 0, result = 0;
+	clientMailslotHandle = mailslotCreate(proc_id);
 	while (TRUE)
 	{
-		result = GetMailslotInfo(clientMailslotHandle, NULL, NULL, &msgCount, NULL);
+		result = GetMailslotInfo(clientMailslotHandle, NULL, NULL, &msg_count, NULL);
 		if (result != 0)
 		{
-			if (msgCount > 0)
+			if (msg_count > 0)
 			{
 				EnterCriticalSection(&crit);
 				readMessage = TRUE;
@@ -570,10 +591,11 @@ void mailslotListener(char* procId)
 		}
 		else
 		{
-			SendMessage(planetStatusHandles[3], LB_ADDSTRING, 0, "GetMailSlotInfo failed when trying to get from clientMailSlot, returned zero.");
+			SendDlgItemMessage(hDlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, "GetMailSlotInfo failed when trying to get from clientMailSlot, returned zero.");
 		}
 	}
 }
+
 /*Win32 Entry Point*/
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int nCmdShow) {
 
@@ -581,29 +603,30 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	MSG msg;
 	InitializeCriticalSection(&crit);
 	int len = (int)(log10(GetCurrentProcessId()) + 1);
-	curProcID = (char*)malloc(sizeof(char)*len+1);
-	mailslotC = mailslotConnect(curProcID);
-	sprintf(curProcID, "%d", GetCurrentProcessId());
-	HANDLE msgThread = threadCreate((LPTHREAD_START_ROUTINE)mailslotListener, curProcID);
+	cur_proc_id = malloc(sizeof(char*) * len);
+	localPlanetList = Create_List();
+	sprintf(cur_proc_id, "%d", GetCurrentProcessId());
+	mailslotC = mailslotConnect(cur_proc_id);
+	HANDLE message_thread = threadCreate((LPTHREAD_START_ROUTINE)mailslotListener, cur_proc_id);
 	hDlgs[0] = CreateDialogParam(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, planetStatusDialogProc, 0);
 	hDlgs[1] = CreateDialogParam(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, newPlanetDialogProc, 0);
 	ShowWindow(hDlgs[0], SW_SHOW);
 	ShowWindow(hDlgs[1], SW_SHOW);
 	Sleep(500);
 
-	while ((ret = GetMessage(&msg, 0, 0, 0)) != 0)
+	while ((ret = GetMessage(&msg, 0, 0, 0)) > 0)
 	{
 		if (ret == -1)
 		{
 			return -1;
 		}
 
-		if (readMessage)
-		{
-			msg.message = MY_MSG;
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
+		//if (readMessage)
+		//{
+		//	msg.message = MY_MSG;
+		//	TranslateMessage(&msg);
+		//	DispatchMessage(&msg);
+		//}
 		for (int i = 0; i < 1; i++)
 		{
 			if (!IsDialogMessage(hDlgs[i], &msg))
@@ -611,11 +634,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);
 			}
-		}
-		
+		}	
 	}
-	CloseHandle(msgThread);
-	len = GetLastError();
-	MessageBox(MB_APPLMODAL, len , NULL, MB_OK);
+	if (!CloseHandle(message_thread)) {
+		MessageBox(MB_APPLMODAL, GetLastError(), "Error", MB_OK);
+	}
 	return 0;
 }

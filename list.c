@@ -7,14 +7,15 @@
 
 List* Create_List(){
 	List *list;
-		list = (List*)malloc(sizeof(List));
-		list->Size= 0;
-		list->Head = NULL;
-		if (list != NULL && list->Size==0 && list->Head==NULL) {
-			printf("List has been created\n");
-				return list;
-		}
-		return NULL;
+	list = malloc(sizeof(List*));
+	list->Head = malloc(sizeof(planet_type*));
+	list->Size= 0;
+	list->Head = NULL;
+	if (list != NULL && list->Size==0 && list->Head==NULL) {
+		printf("List has been created\n");
+			return list;
+	}
+	return NULL;
 }
 
 
@@ -22,7 +23,7 @@ List* Create_List(){
 
 void Add_first_Item(List *list, int Input) {
 	Node *New;
-	New = (Node*)malloc(sizeof(Node));
+	New = malloc(sizeof(Node*));
 	if (New == NULL) {
 		printf("Could not allocate memory");
 	}
@@ -40,7 +41,7 @@ void Add_first_Item(List *list, int Input) {
 void Add_Item_Last(List *list, planet_type input) {
 	planet_type *it;
 	it = list->Head;
-	planet_type *Iterator = (planet_type*)malloc(sizeof(planet_type));
+	planet_type *Iterator = malloc(sizeof(planet_type*));
 	Iterator->life = input.life;
 	Iterator->mass = input.mass;
 	strcpy(Iterator->name, input.name);
