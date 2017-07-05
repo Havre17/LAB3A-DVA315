@@ -41,7 +41,7 @@ void Add_first_Item(List *list, int Input) {
 void Add_Item_Last(List *list, planet_type input) {
 	planet_type *it;
 	it = list->Head;
-	planet_type *Iterator = malloc(sizeof(planet_type*));
+	planet_type *Iterator = malloc(sizeof(planet_type));
 	Iterator->life = input.life;
 	Iterator->mass = input.mass;
 	strcpy(Iterator->name, input.name);
