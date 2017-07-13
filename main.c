@@ -111,7 +111,7 @@ BOOL loadFile()
 
 BOOL saveFile(HWND hDlg)
 {
-	HANDLE file_handle = OpenFileDialog(NULL, GENERIC_WRITE, CREATE_ALWAYS);
+	HANDLE file_handle = OpenFileDialog("Save solar system", GENERIC_WRITE, CREATE_NEW);
 	DWORD bytesWritten = 0;
 	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0), txt_len = 0;
 	int *indexes = malloc(sizeof(int) * item_count);
@@ -164,7 +164,6 @@ void CopyList(List *a, List *b)
 }
 
 //Function that is used for freeing resources. Takes an arbitary amount of arguments and frees them
-
 void ResetNewPlanetEdits(HWND hDlg)
 {
 	SetWindowText(GetDlgItem(hDlg, P_NAME_EDIT), "");
@@ -463,8 +462,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	sprintf(cur_proc_id, "%d", GetCurrentProcessId());
 	mailslotC = mailslotConnect(cur_proc_id);
 	HANDLE message_thread = threadCreate((LPTHREAD_START_ROUTINE)mailslotListener, cur_proc_id);
-	hDlgs[0] = CreateDialogParam(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, planetStatusDialogProc, 0);
-	hDlgs[1] = CreateDialogParam(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, newPlanetDialogProc, 0);
+	hDlgs[0] = CreateDialog(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, planetStatusDialogProc);
+	hDlgs[1] = CreateDialog(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, newPlanetDialogProc);
 	ShowWindow(hDlgs[0], SW_SHOW);
 	ShowWindow(hDlgs[1], SW_SHOW);
 	Sleep(500);
@@ -482,14 +481,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 		//	TranslateMessage(&msg);
 		//	DispatchMessage(&msg);
 		//}
-		for (int i = 0; i < 1; i++)
+		if (!IsDialogMessage(hDlgs[0], &msg) && !IsDialogMessage(hDlgs[1], &msg))
 		{
-			if (!IsDialogMessage(hDlgs[i], &msg))
-			{
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-		}	
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 	}
 	if (!CloseHandle(message_thread)) {
 		MessageBox(MB_APPLMODAL, GetLastError(), "Error", MB_OK);

@@ -199,7 +199,7 @@ void windowRefreshTimer (HWND hWnd, int updateFreq) {
 
 HANDLE OpenFileDialog(char* string, DWORD accessMode, DWORD howToCreate)
 {
-
+	DWORD error;
 	OPENFILENAME opf;
 	char szFileName[_MAX_PATH]="";
 
