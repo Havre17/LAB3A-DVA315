@@ -84,13 +84,12 @@ int mailslotWrite(HANDLE mailSlot, void *msg, int msgSize) {
 	if (!fResult)
 	{
 		printf("Write to mailslot failed. Errorcode: %d. \n", GetLastError());
-		return (int)bytesWritten;
 	}
 	else
 	{
 		printf("Write to slot succeded. \n");
-		return (int)bytesWritten;
 	}
+	return (int)bytesWritten;
 }
 
 int	mailslotRead (HANDLE mailbox, void *msg, int msgSize) {
@@ -199,7 +198,6 @@ void windowRefreshTimer (HWND hWnd, int updateFreq) {
 
 HANDLE OpenFileDialog(char* string, DWORD accessMode, DWORD howToCreate)
 {
-	DWORD error;
 	OPENFILENAME opf;
 	char szFileName[_MAX_PATH]="";
 

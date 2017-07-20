@@ -9,6 +9,7 @@
 #define MY_LOAD_PLANETS (WM_APP + 1) 
 #define MY_UPDATE_ALIVE (WM_APP + 2)
 #define MY_MSG (WM_APP + 3)
+#define MY_UPDATE_LOCAL_PLANETS (WM_APP + 4)
 
 /*
 	Stuff todo: 
@@ -21,6 +22,7 @@ int cid = 0;
 char counter_text[30];
 char *cur_proc_id;
 BOOL readMessage;
+BOOL connected;
 HWND hDlgs[2];
 HWND curFoc, curInactiveFoc;
 HANDLE clientMailslotHandle, mailslotC, mailslotS;
@@ -46,30 +48,37 @@ void CleanUp(int num, ...)
 
 BOOL sendHelperFunc(HWND hDlg)
 {
-	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0);
-	int *indexes = malloc(sizeof(int*) * item_count);
+	if (!connected) {
+		MessageBox(hDlg, TEXT("No current connection to server, cannot send planet/planets"), TEXT("Error"), (MB_ICONERROR | MB_OK));
+		return FALSE;
+	}
+	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0), ret;
+	if (item_count < 1) {
+		MessageBox(hDlg, TEXT("No planet was selected. None was sent."), TEXT("Error"), (MB_ICONERROR | MB_OK));
+		return FALSE;
+	}
+	int *indexes = malloc(sizeof(int) * item_count);
 	SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELITEMS, item_count, indexes);
-	char* planet_name = NULL;
-	int name_len = 0;
-	planet_type* cur_planet = NULL;
+	char *planet_name = NULL;
+	planet_type *cur_planet = NULL;
+	planet_name = malloc(sizeof(char) * 20);
+	cur_planet = malloc(sizeof(planet_type));
 	for (int i = (item_count - 1); i >= 0; i--)
 	{
 		//Take the selected planets and send them one-by-one to the server for processing.
-		planet_name = malloc(sizeof(char*) * name_len);
-		cur_planet = malloc(sizeof(planet_type*));
-		name_len = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXTLEN, indexes[i], 0);
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXT, indexes[i], planet_name);
-		memcpy(GetPlanet(localPlanetList, cur_proc_id, planet_name), cur_planet, sizeof(planet_type*));
-		mailslotWrite(mailslotS, cur_planet, sizeof(planet_type*));
+		memcpy(cur_planet, GetPlanet(localPlanetList, cur_proc_id, planet_name), sizeof(planet_type));
+		mailslotWrite(mailslotS, cur_planet, sizeof(planet_type));
 		SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_ADDSTRING, 0, planet_name);
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, indexes[i], 0);
-		CleanUp(1, cur_planet);
-		free(planet_name);
-		lpc--;
+		Destroy_Item(localPlanetList, cur_proc_id, planet_name);
 	}
-	sprintf(counter_text, "Number of Local Planets: %d", lpc);
-	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
-	CleanUp(1, indexes);
+	SendMessage(hDlgs[0], MY_LOAD_PLANETS, NULL, NULL);
+	/*sprintf(counter_text, "Number of Local Planets: %d", lpc);
+	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);*/
+	free(indexes);
+	free(planet_name);
+	free(cur_planet);
 	return TRUE;
 }
 
@@ -86,7 +95,6 @@ BOOL loadFile()
 		if (localPlanetList == NULL) {
 			localPlanetList = Create_List();
 		}
-		//allocate for planets until there's no more. planets are read one at the time
 		planet_type *planet_buffer = malloc(sizeof(planet_type));
 
 		while (read) {
@@ -96,33 +104,34 @@ BOOL loadFile()
 
 			if (bytes_read > 0 && success) {
 				Add_Item_Last(localPlanetList, *planet_buffer);
-				free(planet_buffer);
-				planet_buffer = malloc(sizeof(planet_type));
 			}
 			//else read has failed.
 			else {
 				read = FALSE;
 			}
-
 		}
+		free(planet_buffer);
 		return TRUE;
 	}	
 }
 
 BOOL saveFile(HWND hDlg)
 {
-	HANDLE file_handle = OpenFileDialog("Save solar system", GENERIC_WRITE, CREATE_NEW);
-	DWORD bytesWritten = 0;
+	DWORD bytes_written = 0;
 	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0), txt_len = 0;
 	int *indexes = malloc(sizeof(int) * item_count);
 	char* planet_name = NULL;
 	planet_type *temp = NULL, *planet_buffer = NULL;
+	//alloc memory
+	planet_buffer = malloc(sizeof(planet_type));
+	planet_name = malloc(sizeof(char) * 20);
 
+	HANDLE file_handle = OpenFileDialog(NULL, GENERIC_WRITE, CREATE_ALWAYS);
 	if (file_handle == INVALID_HANDLE_VALUE) {
 		return FALSE;
 	}
-	
-	else {	
+
+	else {
 		//if any item is selected in the list
 		if (item_count > 1) {
 			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELITEMS, item_count, indexes);
@@ -134,15 +143,12 @@ BOOL saveFile(HWND hDlg)
 		}
 
 		for (int i = 0; i < item_count; i++) {
-			planet_buffer = malloc(sizeof(planet_type*));
-			txt_len = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXTLEN, indexes[i], NULL);
-			planet_name = malloc(sizeof(char) * txt_len);
 			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXT, indexes[i], planet_name);
-			memcpy(planet_buffer, GetPlanet(localPlanetList, cur_proc_id, planet_name), sizeof(planet_type*));
-			WriteFile(file_handle, planet_buffer, sizeof(planet_type*), &bytesWritten, NULL);
-			free(planet_buffer);
+			memcpy(planet_buffer, GetPlanet(localPlanetList, cur_proc_id, planet_name), sizeof(planet_type));
+			WriteFile(file_handle, planet_buffer, sizeof(planet_type), &bytes_written, NULL);
 		}
-
+		free(planet_name);
+		free(planet_buffer);
 		return TRUE;
 	}
 }
@@ -205,7 +211,8 @@ BOOL addHelperFunc(HWND hDlg)
 	new_planet->life = atof(string_buffer);
 	Add_Item_Last(localPlanetList, *new_planet);
 	ResetNewPlanetEdits(hDlg);
-	CleanUp(2, string_buffer, new_planet);
+	free(string_buffer);
+	CleanUp(1, new_planet);
 	SendMessage(hDlgs[0], MY_LOAD_PLANETS, NULL, NULL);
 	return TRUE;
 }
@@ -214,11 +221,11 @@ BOOL loadPlanetsHelperFunc(HWND hDlg)
 {
 	planet_type *iterator = localPlanetList->Head;
 	char *planet_name = NULL;
+	planet_name = malloc(sizeof(char) * 20);
 	SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_RESETCONTENT, 0, 0);
 	lpc = 0;
 	while (iterator != NULL)
 	{
-		planet_name = malloc(sizeof(char*) * strlen(iterator->name));
 		strcpy(planet_name, iterator->name);
 		planet_name = iterator->name;
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_ADDSTRING, 0, planet_name);
@@ -229,6 +236,7 @@ BOOL loadPlanetsHelperFunc(HWND hDlg)
 	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
 	return TRUE;
 }
+
 /*New planet dialog helper functions - END*/
 
 /*Main Dialog Window*/
@@ -243,10 +251,12 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 			if (mailslotS != INVALID_HANDLE_VALUE)
 			{
 				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to server succeded.");
+				connected = TRUE;
 			}
 			else
 			{
 				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to server failed.");
+				connected = FALSE;
 			}
 			sprintf(counter_text, "Number of Local Planets: %d", lpc);
 			SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
@@ -355,7 +365,7 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 			}
 			break;
 		}
-
+		
 		case WM_CLOSE:
 		{
 			if (MessageBox(hDlg, TEXT("Close the program?"), TEXT("Close"),	MB_ICONQUESTION | MB_YESNO) == IDYES)
@@ -468,19 +478,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	ShowWindow(hDlgs[1], SW_SHOW);
 	Sleep(500);
 
-	while ((ret = GetMessage(&msg, 0, 0, 0)) > 0)
+	while ((ret = GetMessage(&msg, 0, 0, 0)) != 0)
 	{
 		if (ret == -1)
 		{
 			return -1;
 		}
 
-		//if (readMessage)
-		//{
-		//	msg.message = MY_MSG;
-		//	TranslateMessage(&msg);
-		//	DispatchMessage(&msg);
-		//}
+		if (readMessage)
+		{
+			msg.message = MY_MSG;
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
 		if (!IsDialogMessage(hDlgs[0], &msg) && !IsDialogMessage(hDlgs[1], &msg))
 		{
 			TranslateMessage(&msg);
