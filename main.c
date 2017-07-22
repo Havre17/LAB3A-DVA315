@@ -7,7 +7,6 @@
 #include <math.h>
 
 #define MY_LOAD_PLANETS (WM_APP + 1) 
-#define MY_UPDATE_ALIVE (WM_APP + 2)
 #define MY_MSG (WM_APP + 3)
 #define MY_UPDATE_LOCAL_PLANETS (WM_APP + 4)
 
@@ -210,7 +209,6 @@ BOOL addHelperFunc(HWND hDlg)
 	ResetNewPlanetEdits(hDlg);
 	free(string_buffer);
 	CleanUp(1, new_planet);
-	SendMessage(hDlgs[0], MY_LOAD_PLANETS, NULL, NULL);
 	return TRUE;
 }
 
@@ -234,6 +232,41 @@ BOOL loadPlanetsHelperFunc(HWND hDlg)
 	return TRUE;
 }
 
+BOOL ReadMailslotMessage(HWND hDlg)
+{
+	DWORD nextMsgSize, result, bytes_read;
+	char* display_string = malloc(32);
+	MsgStruct msg;
+	result = GetMailslotInfo(clientMailslotHandle, NULL, &nextMsgSize, NULL, NULL);
+	if (result != 0)
+	{
+		bytes_read = mailslotRead(clientMailslotHandle, &msg, nextMsgSize);
+		EnterCriticalSection(&crit);
+		readMessage = FALSE;
+		LeaveCriticalSection(&crit);
+		if (bytes_read < 1)
+		{
+			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Failure reading from mailslot. Bytes read were lesser than 1.");
+			return FALSE;
+		}
+
+		else
+		{
+			sprintf(display_string, "%s: %s", msg.PlanName, msg.Message);
+			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, display_string);
+			int index = SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_FINDSTRING, -1, msg.PlanName);
+			SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_DELETESTRING, index, 0);
+			return TRUE;
+		}
+	}
+	else
+	{
+		free(display_string);
+		SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "GetMailSlotInfo failed, returned zero.");
+		return FALSE;
+	}
+	return TRUE;
+}
 /*New planet dialog helper functions - END*/
 
 /*Main Dialog Window*/
@@ -265,88 +298,60 @@ INT_PTR CALLBACK planetStatusDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPA
 		{
 			switch (LOWORD(wParam))
 			{
-			case SEND_BUTTON:
-			{
-				if (sendHelperFunc(hDlg))
+				case SEND_BUTTON:
 				{
-					MessageBox(hDlg, TEXT("Planet/Planets were sent to server successfully."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
-				}
-				else
-				{
-					MessageBox(hDlg, TEXT("Planet/Planets were sent to server failed."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
-				}
-				return TRUE;
-				break;
-			}			
-			case LOAD_BUTTON:
-			{
-				if (loadFile())
-				{
-					MessageBox(hDlg, TEXT("Local planets was loaded from file"), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
-					SendMessage(hDlg, MY_LOAD_PLANETS, 0, 0);
+					if (sendHelperFunc(hDlg))
+					{
+						MessageBox(hDlg, TEXT("Planet/Planets were sent to server successfully."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+					}
+					else
+					{
+						MessageBox(hDlg, TEXT("Planet/Planets were sent to server failed."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+					}
 					return TRUE;
-				}
-				else
-				{
-					MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Load from file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
-					return TRUE;
-				}
-				break;
-			}
-			case SAVE_BUTTON:
-			{				
-				if (!saveFile(hDlg))
-				{
-					MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Save to file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
-					return TRUE;
-				}
-				else
-				{
-					MessageBox(hDlg, TEXT("Local planets was saved to file"), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
-					return TRUE;
-				}
-				break;
-			}
-			}		
-			break;
-		}
+					break;
+				}	
 
-		case MY_UPDATE_ALIVE:
-		{
-			int index = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_FINDSTRING, -1, wParam);
-			SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, index, 0);;
-			return TRUE;
-			break;
+				case LOAD_BUTTON:
+				{
+					if (loadFile())
+					{
+						MessageBox(hDlg, TEXT("Local planets was loaded from file"), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+						SendMessage(hDlg, MY_LOAD_PLANETS, 0, 0);
+						return TRUE;
+					}
+					else
+					{
+						MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Load from file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
+						return TRUE;
+					}
+					break;
+				}
+
+				case SAVE_BUTTON:
+				{				
+					if (!saveFile(hDlg))
+					{
+						MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Save to file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
+						return TRUE;
+					}
+					else
+					{
+						MessageBox(hDlg, TEXT("Local planets was saved to file"), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+						return TRUE;
+					}
+					break;
+				}
+			}		
 		}
 
 		case MY_MSG:
 		{
-			DWORD nextMsgSize, result;
-			MsgStruct msg;
-			result = GetMailslotInfo(mailslotC, NULL, &nextMsgSize, NULL, NULL);
-			if (result != 0)
-			{
-				result = mailslotRead(mailslotC, &msg, nextMsgSize);
-				if (result > 1)
-				{
-					SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Failure reading from mailslot. Bytes read were lesser than 1.");
-					return FALSE;
-				}
-
-				else
-				{
-					SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, msg.Message);
-					EnterCriticalSection(&crit);
-					readMessage = FALSE;
-					LeaveCriticalSection(&crit);
-					return TRUE;
-				}
-			}
+			if (ReadMailslotMessage(hDlg))
+				return TRUE;
 			else
-			{
-				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "GetMailSlotInfo failed, returned zero.");
 				return FALSE;
-			}
+
 			break;
 		}
 	
@@ -401,6 +406,7 @@ INT_PTR CALLBACK newPlanetDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
 				{	
 					if (addHelperFunc(hDlg))
 					{
+						SendMessage(hDlgs[0], MY_LOAD_PLANETS, NULL, NULL);					
 						return TRUE;
 					}
 					else
@@ -411,21 +417,7 @@ INT_PTR CALLBACK newPlanetDialogProc(HWND hDlg, UINT uMsg, WPARAM wParam, LPARAM
 					break;
 				}
 			}
-			break;
 		}
-		case MY_LOAD_PLANETS:
-		{
-			if (loadPlanetsHelperFunc(hDlg))
-			{
-				return TRUE;
-			}
-			else
-			{
-				return FALSE;
-			}
-			break;
-		}
-
 		default:
 		{
 			return FALSE;
@@ -468,16 +460,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 	cur_proc_id = malloc(sizeof(char) * len);
 	localPlanetList = Create_List();
 	sprintf(cur_proc_id, "%d", GetCurrentProcessId());
+	hDlgs[0] = CreateDialog(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, planetStatusDialogProc);
+	hDlgs[1] = CreateDialog(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, newPlanetDialogProc);
 	if (connected) {
 		message_thread = threadCreate((LPTHREAD_START_ROUTINE)mailslotListener, cur_proc_id);
 		Sleep(500);
 		mailslotC = mailslotConnect(cur_proc_id);
-		if (mailslotC == INVALID_HANDLE_VALUE){
+		if (mailslotC == INVALID_HANDLE_VALUE) {
 			SendDlgItemMessage(hDlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to client mailslot failed.");
 		}
 	}
-	hDlgs[0] = CreateDialog(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, planetStatusDialogProc);
-	hDlgs[1] = CreateDialog(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, newPlanetDialogProc);
 	ShowWindow(hDlgs[0], SW_SHOW);
 	ShowWindow(hDlgs[1], SW_SHOW);
 
@@ -487,12 +479,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 		{
 			return -1;
 		}
-
 		if (readMessage)
 		{
 			msg.message = MY_MSG;
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
 		}
 		if (!IsDialogMessage(hDlgs[0], &msg) && !IsDialogMessage(hDlgs[1], &msg))
 		{
