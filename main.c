@@ -209,6 +209,7 @@ BOOL addHelperFunc(HWND hDlg)
 	new_planet->sy = atof(string_buffer);
 	GetDlgItemText(hDlg, LIFE_EDIT, string_buffer, sizeof(string_buffer));
 	new_planet->life = atof(string_buffer);
+	strcpy(new_planet->pid, cur_proc_id);
 	Add_Item_Last(localPlanetList, *new_planet);
 	ResetNewPlanetEdits(hDlg);
 	free(string_buffer);
