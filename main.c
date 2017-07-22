@@ -18,13 +18,11 @@
 */
 /*START ---- Globals*/
 int lpc = 0;
-int cid = 0;
 char counter_text[30];
 char *cur_proc_id;
 BOOL readMessage;
 BOOL connected;
 HWND hDlgs[2];
-HWND curFoc, curInactiveFoc;
 HANDLE clientMailslotHandle, mailslotC, mailslotS;
 List *localPlanetList;
 
@@ -74,8 +72,6 @@ BOOL sendHelperFunc(HWND hDlg)
 		Destroy_Item(localPlanetList, cur_proc_id, planet_name);
 	}
 	SendMessage(hDlgs[0], MY_LOAD_PLANETS, NULL, NULL);
-	/*sprintf(counter_text, "Number of Local Planets: %d", lpc);
-	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);*/
 	free(indexes);
 	free(planet_name);
 	free(cur_planet);
@@ -465,19 +461,25 @@ void mailslotListener(char* proc_id)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int nCmdShow) {
 
 	BOOL ret;
+	HANDLE message_thread;
 	MSG msg;
 	InitializeCriticalSection(&crit);
 	int len = (int)(log10(GetCurrentProcessId()) + 1);
-	cur_proc_id = malloc(sizeof(char*) * len);
+	cur_proc_id = malloc(sizeof(char) * len);
 	localPlanetList = Create_List();
 	sprintf(cur_proc_id, "%d", GetCurrentProcessId());
-	mailslotC = mailslotConnect(cur_proc_id);
-	HANDLE message_thread = threadCreate((LPTHREAD_START_ROUTINE)mailslotListener, cur_proc_id);
+	if (connected) {
+		message_thread = threadCreate((LPTHREAD_START_ROUTINE)mailslotListener, cur_proc_id);
+		Sleep(500);
+		mailslotC = mailslotConnect(cur_proc_id);
+		if (mailslotC == INVALID_HANDLE_VALUE){
+			SendDlgItemMessage(hDlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to client mailslot failed.");
+		}
+	}
 	hDlgs[0] = CreateDialog(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, planetStatusDialogProc);
 	hDlgs[1] = CreateDialog(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, newPlanetDialogProc);
 	ShowWindow(hDlgs[0], SW_SHOW);
 	ShowWindow(hDlgs[1], SW_SHOW);
-	Sleep(500);
 
 	while ((ret = GetMessage(&msg, 0, 0, 0)) != 0)
 	{
