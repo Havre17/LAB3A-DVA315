@@ -145,7 +145,7 @@ List *Delete_List(List* list) {
 }
 
 
-void Destroy_Item(List *list, char * PID, char * Name) {
+List *Destroy_Item(List *list, char * PID, char * Name) {
 	planet_type *Iterator_Left, *Iterator_Right, *Temp;
 	int i;
 	Iterator_Left = list->Head;
@@ -163,11 +163,13 @@ void Destroy_Item(List *list, char * PID, char * Name) {
 			free(Temp);
 			list->Head = NULL;
 			list->Size = 0;
+			return list;
 		}
 		else {
 			Temp = Iterator_Left;
 			free(Temp);
 			list->Size--;
+			return list;
 		}
 	}
 
@@ -177,6 +179,7 @@ void Destroy_Item(List *list, char * PID, char * Name) {
 		Temp = Iterator_Right;
 		free(Temp);
 		list->Size--;
+		return list;
 	}
 
 	else if (strcmp(list->Head->pid, PID) == 0 && strcmp(list->Head->name, Name) == 0 && list->Size > 1) {
@@ -185,6 +188,7 @@ void Destroy_Item(List *list, char * PID, char * Name) {
 		list->Head = Iterator_Right;
 		free(Temp);
 		list->Size--;
+		return list;
 	}
 
 	else {
@@ -194,6 +198,7 @@ void Destroy_Item(List *list, char * PID, char * Name) {
 		Iterator_Left->next = Iterator_Right;
 		free(Temp);
 		list->Size--;
+		return list;
 	}
 
 }

@@ -71,7 +71,7 @@ BOOL sendHelperFunc(HWND hDlg)
 		mailslotWrite(mailslotS, cur_planet, sizeof(planet_type));
 		SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_ADDSTRING, 0, planet_name);
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, indexes[i], 0);
-		Destroy_Item(localPlanetList, cur_proc_id, planet_name);
+		localPlanetList=Destroy_Item(localPlanetList, cur_proc_id, planet_name);
 	}
 	SendMessage(hDlgs[0], MY_LOAD_PLANETS, NULL, NULL);
 	/*sprintf(counter_text, "Number of Local Planets: %d", lpc);
