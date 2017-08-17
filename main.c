@@ -503,6 +503,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 			SendDlgItemMessage(hDlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to client mailslot failed.");
 		}
 	}
+	else {
+		message_thread = NULL;
+	}
 	ShowWindow(hDlgs[0], SW_SHOW);
 	dlg_hidden = TRUE;
 	ShowWindow(hDlgs[1], SW_HIDE);
