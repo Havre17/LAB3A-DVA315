@@ -145,69 +145,68 @@ List *Delete_List(List* list) {
 }
 
 
-void Destroy_Item(List **list, char * PID, char * Name) {
+void Destroy_Item(List **list, char *Name)
+{
 	planet_type *Iterator_Left, *Iterator_Right, *Temp;
-	int i;
+	//both pointers are pointing to the same node
 	Iterator_Left = (*list)->Head;
 	Iterator_Right = Iterator_Left;
 
-
-
-	while ((strcmp(Iterator_Left->name, Name) != 0)) {
+	while (strcmp(Iterator_Right->name, Name) != 0 && Iterator_Right != NULL)
+	{
 		Iterator_Left = Iterator_Right;
 		Iterator_Right = Iterator_Right->next;
 	}
-	if (strcmp(Iterator_Left->name, Name) == 0 && strcmp(Iterator_Left->pid, PID) == 0 && Iterator_Left->next == NULL) {
-		if ((*list)->Size == 1) {
-			Temp = Iterator_Left;
-			free(Temp);
-			(*list)->Head = NULL;
-			(*list)->Size = 0;
-			return;
-		}
-		else {
-			Temp = Iterator_Right;
-			free(Temp);
-			Iterator_Left->next = NULL;
-			Temp = NULL;
-			(*list)->Size--;
-			return;
-		}
-	}
-
-	else if (strcmp(Iterator_Left->name, Name) == 0 && strcmp(Iterator_Left->pid, PID) == 0 && Iterator_Left->next->next == NULL) {
-		Iterator_Right = Iterator_Left->next;
-		Temp = Iterator_Left;
-		if ((*list)->Size == 2)
+		//no match was made since we reached the end of the list.
+		if (Iterator_Right == NULL)
 		{
-			(*list)->Head = Iterator_Right;
+			return;
 		}
-		free(Temp);
-		Temp = NULL;
-		(*list)->Size--;
-		return list;
-	}
+		//if the found node is the head of the list. 
+		if (Iterator_Right == (*list)->Head) 
+		{	
+			//if it is head and last node.
+			if ((*list)->Size < 2)
+			{
+				free((*list)->Head);
+				(*list)->Head = NULL;
+				(*list)->Size--;
+			}
+			//else if it is the head but not the last node
+			else
+			{
+				Temp = Iterator_Right;
+				(*list)->Head = Iterator_Right->next;
+				free(Temp);
+				Temp = NULL;
+				(*list)->Size--;
+			}
+			
+		}
+		//if not the head it is either last or in between
+		else
+		{
+			//if the node is the last in the list
+			if (Iterator_Right->next == NULL)
+			{
+				Temp = Iterator_Right;
+				Iterator_Left->next = NULL;
+				free(Temp);
+				(*list)->Size--;
+			}
+			//else the node is in between two nodes
+			else
+			{
+				Temp = Iterator_Right;
+				Iterator_Left->next = Iterator_Right->next;
+				free(Temp);
+				(*list)->Size--;
+			}
 
-	else if (strcmp((*list)->Head->pid, PID) == 0 && strcmp((*list)->Head->name, Name) == 0 && (*list)->Size > 1) {
-		Iterator_Right = Iterator_Left->next;
-		Temp = Iterator_Left;
-		(*list)->Head = Iterator_Right;
-		free(Temp);
-		(*list)->Size--;
-		return;
-	}
-
-	else {
-		Iterator_Right = Iterator_Left->next;
-		Iterator_Right = Iterator_Right->next;
-		Temp = Iterator_Left->next;
-		Iterator_Left->next = Iterator_Right;
-		free(Temp);
-		(*list)->Size--;
-		return;
-	}
-
+		}
+	return;
 }
+
 
 planet_type * GetPlanet(List * list, char * ID, char* pName) {
 	planet_type *Iterator;

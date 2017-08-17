@@ -88,7 +88,7 @@ BOOL SendPlanetToServer(HWND hDlg)
 		SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_ADDSTRING, 0, planet_name);
 		printf("list is %d", local_planet_list->Size);
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, indexes[i], 0);
-		Destroy_Item(&local_planet_list, cur_proc_id, planet_name);
+		Destroy_Item(&local_planet_list, planet_name);
 	}
 	free(indexes);
 	free(planet_name);
@@ -110,6 +110,7 @@ BOOL LoadFile()
 			local_planet_list = Create_List();
 		}
 		planet_type *planet_buffer = malloc(sizeof(planet_type));
+		planet_type *new_planet = malloc(sizeof(planet_type));
 
 		while (read) {
 
@@ -117,7 +118,9 @@ BOOL LoadFile()
 			success = ReadFile(file_handle, planet_buffer, sizeof(planet_type), &bytes_read, NULL);
 
 			if (bytes_read > 0 && success) {
-				Add_Item_Last(&local_planet_list, *planet_buffer);
+				memcpy(new_planet, planet_buffer, sizeof(planet_type));
+				strcpy(new_planet->pid, cur_proc_id);
+				Add_Item_Last(&local_planet_list, *new_planet);
 			}
 			//else read has failed.
 			else {
