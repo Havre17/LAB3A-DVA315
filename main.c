@@ -55,7 +55,8 @@ void CreateNewPlanet(planet_type **new_planet, BOOL create_from_exist, char* pla
 		GetDlgItemText(hDlg, POS_Y_EDIT, string_buffer, 128);
 		(*new_planet)->sy = atof(string_buffer);
 		GetDlgItemText(hDlg, LIFE_EDIT, string_buffer, 128);
-		(*new_planet)->life = atoi(string_buffer);
+		int i_life = atoi(string_buffer);
+		(*new_planet)->life = i_life;
 		strcpy((*new_planet)->pid, cur_proc_id);
 	}
 	return;
@@ -223,7 +224,7 @@ BOOL LoadLocalPNames(HWND hDlg)
 BOOL ReadMailslotMessage(HWND hDlg)
 {
 	DWORD next_msg_size, result, bytes_read;
-	char* display_string = malloc(32);
+	char* display_string = malloc(64);
 	MsgStruct msg;
 	result = GetMailslotInfo(h_client_mailslot, NULL, &next_msg_size, NULL, NULL);
 	if (result != 0)
