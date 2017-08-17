@@ -48,7 +48,7 @@ void Add_first_Item(List *list, int Input);
 pre - there should be a list and either one or NO items
 post - Item will be added at the end of the list
 */
-void Add_Item_Last(List *list, planet_type input);
+void Add_Item_Last(List **list, planet_type input);
 
 
 

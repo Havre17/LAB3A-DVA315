@@ -38,9 +38,9 @@ void Add_first_Item(List *list, int Input) {
 
 
 
-void Add_Item_Last(List *list, planet_type input) {
+void Add_Item_Last(List **list, planet_type input) {
 	planet_type *it;
-	it = list->Head;
+	it = (*list)->Head;
 	planet_type *Iterator = malloc(sizeof(planet_type));
 	Iterator->life = input.life;
 	Iterator->mass = input.mass;
@@ -52,9 +52,9 @@ void Add_Item_Last(List *list, planet_type input) {
 	Iterator->vx = input.vx;
 	Iterator->vy = input.vy;
 
-	if (list->Head == NULL) {
-		list->Head = Iterator;
-		list->Size++;
+	if ((*list)->Head == NULL) {
+		(*list)->Head = Iterator;
+		(*list)->Size++;
 	}
 	
 	else {
@@ -62,7 +62,7 @@ void Add_Item_Last(List *list, planet_type input) {
 			it = it->next;
 		}
 		it->next = Iterator;
-		list->Size++;
+		(*list)->Size++;
 		return;
 	}
 }
@@ -153,9 +153,9 @@ List *Destroy_Item(List *list, char * PID, char * Name) {
 
 
 
-	while (strcmp(Iterator_Left->name, Name) != 0 && strcmp(Iterator_Left->pid, PID) != 0) {
-		Iterator_Left = Iterator_Left->next;
+	while ((strcmp(Iterator_Left->name, Name) != 0)) {
 		Iterator_Right = Iterator_Left;
+		Iterator_Left = Iterator_Left->next;
 	}
 	if (strcmp(Iterator_Left->name, Name) == 0 && strcmp(Iterator_Left->pid, PID) == 0 && Iterator_Left->next == NULL) {
 		if (list->Size == 1) {
@@ -168,6 +168,9 @@ List *Destroy_Item(List *list, char * PID, char * Name) {
 		else {
 			Temp = Iterator_Left;
 			free(Temp);
+			Iterator_Right->next = NULL;
+			Iterator_Left = NULL;
+			Temp = NULL;
 			list->Size--;
 			return list;
 		}

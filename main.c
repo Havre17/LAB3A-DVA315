@@ -76,9 +76,9 @@ BOOL SendPlanetToServer(HWND hDlg)
 	}
 	int *indexes = malloc(sizeof(int) * item_count);
 	SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELITEMS, item_count, indexes);
-	char *planet_name = malloc(sizeof(char) * 20);
+	char *planet_name = malloc(20);
 	planet_type *planet_to_send = malloc(sizeof(planet_type));
-	for (int i = item_count; i >= 0; i--)
+	for (int i = (item_count - 1); i >= 0; i--)
 	{
 		//Take the selected planets and send them one-by-one to the server for processing.
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXT, indexes[i], planet_name);
@@ -88,7 +88,6 @@ BOOL SendPlanetToServer(HWND hDlg)
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, indexes[i], 0);
 		local_planet_list = Destroy_Item(local_planet_list, cur_proc_id, planet_name);
 	}
-	SendMessage(h_dlgs[0], MY_LOAD_PLANETS, NULL, NULL);
 	free(indexes);
 	free(planet_name);
 	free(planet_to_send);
@@ -116,7 +115,7 @@ BOOL LoadFile()
 			success = ReadFile(file_handle, planet_buffer, sizeof(planet_type), &bytes_read, NULL);
 
 			if (bytes_read > 0 && success) {
-				Add_Item_Last(local_planet_list, *planet_buffer);
+				Add_Item_Last(&local_planet_list, *planet_buffer);
 			}
 			//else read has failed.
 			else {
@@ -193,7 +192,7 @@ BOOL AddNewPlanetToLocal(HWND hDlg)
 	}
 	//Create the new planet
 	CreateNewPlanet(new_planet, FALSE, NULL, hDlg);
-	Add_Item_Last(local_planet_list, *new_planet);
+	Add_Item_Last(&local_planet_list, *new_planet);
 	ResetNewPlanetEdits(hDlg);
 	free(string_buffer);
 	free(new_planet);
@@ -210,13 +209,13 @@ BOOL LoadLocalPNames(HWND hDlg)
 	while (iterator != NULL)
 	{
 		strcpy(planet_name, iterator->name);
-		planet_name = iterator->name;
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_ADDSTRING, 0, planet_name);
 		iterator = iterator->next;
 		lpc++;
 	}
 	sprintf(counter_text, "Number of Local Planets: %d", lpc);
 	SetWindowText(GetDlgItem(hDlg, PLANET_COUNTER_EB), counter_text);
+	free(planet_name);
 	return TRUE;
 }
 
@@ -290,6 +289,7 @@ INT_PTR CALLBACK PlanetStatusDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam
 				{
 					if (SendPlanetToServer(hDlg))
 					{
+						SendMessage(h_dlgs[0], MY_LOAD_PLANETS, NULL, NULL);
 						MessageBox(hDlg, TEXT("Planet/Planets were sent to server successfully."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
 					}
 					else
