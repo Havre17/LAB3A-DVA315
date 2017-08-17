@@ -108,7 +108,7 @@ pre - List must exist and have items
 post - Selected node will be deleted
 */
 
-List* Destroy_Item(List* list, char* pid, char* name);
+void Destroy_Item(List** list, char* pid, char* name);
 
 
 planet_type* GetPlanet(List * list, char * ID, char* pName);

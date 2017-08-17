@@ -17,46 +17,46 @@
 */
 /*START ---- Globals*/
 int lpc = 0;
-char counter_text[30];
+char *counter_text;
 char *cur_proc_id;
 BOOL new_message, connected, dlg_hidden;
-HWND h_dlgs[2];
+HWND *h_dlgs;
 HANDLE h_client_mailslot, h_mailslot_client, h_mailslot_server;
 List *local_planet_list;
-LPCRITICAL_SECTION crit;
+CRITICAL_SECTION crit;
 
 /*END ---- Globals*/
 
-void CreateNewPlanet(planet_type *new_planet, BOOL create_from_exist, char* planet_name, HWND hDlg)
+void CreateNewPlanet(planet_type **new_planet, BOOL create_from_exist, char* planet_name, HWND hDlg)
 {
 	if (create_from_exist) {
 		planet_type *planet_to_copy = GetPlanet(local_planet_list, cur_proc_id, planet_name);
-		new_planet->life = planet_to_copy->life;
-		new_planet->mass = planet_to_copy->mass;
-		new_planet->next = planet_to_copy->next;
-		new_planet->sx = planet_to_copy->sx;
-		new_planet->sy = planet_to_copy->sy;
-		new_planet->vx = planet_to_copy->vx;
-		new_planet->vy = planet_to_copy->vy;
-		strcpy(new_planet->name, planet_to_copy->name);
-		strcpy(new_planet->pid, cur_proc_id);
+		(*new_planet)->life = planet_to_copy->life;
+		(*new_planet)->mass = planet_to_copy->mass;
+		(*new_planet)->next = planet_to_copy->next;
+		(*new_planet)->sx = planet_to_copy->sx;
+		(*new_planet)->sy = planet_to_copy->sy;
+		(*new_planet)->vx = planet_to_copy->vx;
+		(*new_planet)->vy = planet_to_copy->vy;
+		strcpy((*new_planet)->name, planet_to_copy->name);
+		strcpy((*new_planet)->pid, cur_proc_id);
 	}
 	else {
 		char *string_buffer = malloc(128);
-		GetDlgItemText(hDlg, P_NAME_EDIT, new_planet->name, sizeof(new_planet->name));
+		GetDlgItemText(hDlg, P_NAME_EDIT, (*new_planet)->name, sizeof((*new_planet)->name));
 		GetDlgItemText(hDlg, MASS_EDIT, string_buffer, 128);
-		new_planet->mass = atof(string_buffer);
+		(*new_planet)->mass = atof(string_buffer);
 		GetDlgItemText(hDlg, VEL_X_EDIT, string_buffer, 128);
-		new_planet->vx = atof(string_buffer);
+		(*new_planet)->vx = atof(string_buffer);
 		GetDlgItemText(hDlg, VEL_Y_EDIT, string_buffer, 128);
-		new_planet->vy = atof(string_buffer);
+		(*new_planet)->vy = atof(string_buffer);
 		GetDlgItemText(hDlg, POS_X_EDIT, string_buffer, 128);
-		new_planet->sx = atof(string_buffer);
+		(*new_planet)->sx = atof(string_buffer);
 		GetDlgItemText(hDlg, POS_Y_EDIT, string_buffer, 128);
-		new_planet->sy = atof(string_buffer);
+		(*new_planet)->sy = atof(string_buffer);
 		GetDlgItemText(hDlg, LIFE_EDIT, string_buffer, 128);
-		new_planet->life = atoi(string_buffer);
-		strcpy(new_planet->pid, cur_proc_id);
+		(*new_planet)->life = atoi(string_buffer);
+		strcpy((*new_planet)->pid, cur_proc_id);
 	}
 	return;
 }
@@ -69,7 +69,7 @@ BOOL SendPlanetToServer(HWND hDlg)
 		MessageBox(hDlg, TEXT("No current connection to server, cannot send planet/planets"), TEXT("Error"), (MB_ICONERROR | MB_OK));
 		return FALSE;
 	}
-	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0), ret;
+	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0);
 	if (item_count < 1) {
 		MessageBox(hDlg, TEXT("No planet was selected. None was sent."), TEXT("Error"), (MB_ICONERROR | MB_OK));
 		return FALSE;
@@ -82,11 +82,12 @@ BOOL SendPlanetToServer(HWND hDlg)
 	{
 		//Take the selected planets and send them one-by-one to the server for processing.
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETTEXT, indexes[i], planet_name);
-		CreateNewPlanet(planet_to_send, TRUE, planet_name, NULL);
+		CreateNewPlanet(&planet_to_send, TRUE, planet_name, NULL);
 		mailslotWrite(h_mailslot_server, planet_to_send, sizeof(planet_type));
 		SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_ADDSTRING, 0, planet_name);
+		printf("list is %d", local_planet_list->Size);
 		SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_DELETESTRING, indexes[i], 0);
-		local_planet_list = Destroy_Item(local_planet_list, cur_proc_id, planet_name);
+		Destroy_Item(&local_planet_list, cur_proc_id, planet_name);
 	}
 	free(indexes);
 	free(planet_name);
@@ -191,7 +192,7 @@ BOOL AddNewPlanetToLocal(HWND hDlg)
 		local_planet_list = Create_List();
 	}
 	//Create the new planet
-	CreateNewPlanet(new_planet, FALSE, NULL, hDlg);
+	CreateNewPlanet(&new_planet, FALSE, NULL, hDlg);
 	Add_Item_Last(&local_planet_list, *new_planet);
 	ResetNewPlanetEdits(hDlg);
 	free(string_buffer);
@@ -455,16 +456,18 @@ void ListenForMessage(char* proc_id)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLine, int nCmdShow) {
 
 	BOOL ret;
-	HANDLE message_thread;
+	DWORD message_thread;
 	MSG msg;
 	new_message = FALSE;
-	InitializeCriticalSection(&crit);
+	counter_text = malloc(32);
+	InitializeCriticalSectionAndSpinCount(&crit, 0);
 	int len = (int)(log10(GetCurrentProcessId()) + 1);
 	cur_proc_id = malloc(sizeof(char) * len);
-	local_planet_list = Create_List();
 	sprintf(cur_proc_id, "%d", GetCurrentProcessId());
+	h_dlgs = malloc(sizeof(HWND) * 2);
 	h_dlgs[0] = CreateDialog(hInstance, MAKEINTRESOURCE(PLANET_STATUS_DIG), 0, PlanetStatusDialogProcedure);
 	h_dlgs[1] = CreateDialog(hInstance, MAKEINTRESOURCE(NEW_PLANET_DIALOG), 0, NewPlanetDialogProcedure);
+	local_planet_list = Create_List();
 	if (connected) {
 		message_thread = threadCreate((LPTHREAD_START_ROUTINE)ListenForMessage, cur_proc_id);
 		Sleep(500);
@@ -493,8 +496,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 			DispatchMessage(&msg);
 		}
 	}
-	if (!CloseHandle(message_thread)) {
-		MessageBox(MB_APPLMODAL, GetLastError(), "Error", MB_OK);
-	}
+	
 	return 0;
 }

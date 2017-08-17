@@ -145,53 +145,56 @@ List *Delete_List(List* list) {
 }
 
 
-List *Destroy_Item(List *list, char * PID, char * Name) {
+void Destroy_Item(List **list, char * PID, char * Name) {
 	planet_type *Iterator_Left, *Iterator_Right, *Temp;
 	int i;
-	Iterator_Left = list->Head;
+	Iterator_Left = (*list)->Head;
 	Iterator_Right = Iterator_Left;
 
 
 
 	while ((strcmp(Iterator_Left->name, Name) != 0)) {
-		Iterator_Right = Iterator_Left;
-		Iterator_Left = Iterator_Left->next;
+		Iterator_Left = Iterator_Right;
+		Iterator_Right = Iterator_Right->next;
 	}
 	if (strcmp(Iterator_Left->name, Name) == 0 && strcmp(Iterator_Left->pid, PID) == 0 && Iterator_Left->next == NULL) {
-		if (list->Size == 1) {
+		if ((*list)->Size == 1) {
 			Temp = Iterator_Left;
 			free(Temp);
-			list->Head = NULL;
-			list->Size = 0;
-			return list;
+			(*list)->Head = NULL;
+			(*list)->Size = 0;
+			return;
 		}
 		else {
-			Temp = Iterator_Left;
+			Temp = Iterator_Right;
 			free(Temp);
-			Iterator_Right->next = NULL;
-			Iterator_Left = NULL;
+			Iterator_Left->next = NULL;
 			Temp = NULL;
-			list->Size--;
-			return list;
+			(*list)->Size--;
+			return;
 		}
 	}
 
 	else if (strcmp(Iterator_Left->name, Name) == 0 && strcmp(Iterator_Left->pid, PID) == 0 && Iterator_Left->next->next == NULL) {
 		Iterator_Right = Iterator_Left->next;
-		Iterator_Left->next = NULL;
-		Temp = Iterator_Right;
+		Temp = Iterator_Left;
+		if ((*list)->Size == 2)
+		{
+			(*list)->Head = Iterator_Right;
+		}
 		free(Temp);
-		list->Size--;
+		Temp = NULL;
+		(*list)->Size--;
 		return list;
 	}
 
-	else if (strcmp(list->Head->pid, PID) == 0 && strcmp(list->Head->name, Name) == 0 && list->Size > 1) {
+	else if (strcmp((*list)->Head->pid, PID) == 0 && strcmp((*list)->Head->name, Name) == 0 && (*list)->Size > 1) {
 		Iterator_Right = Iterator_Left->next;
 		Temp = Iterator_Left;
-		list->Head = Iterator_Right;
+		(*list)->Head = Iterator_Right;
 		free(Temp);
-		list->Size--;
-		return list;
+		(*list)->Size--;
+		return;
 	}
 
 	else {
@@ -200,8 +203,8 @@ List *Destroy_Item(List *list, char * PID, char * Name) {
 		Temp = Iterator_Left->next;
 		Iterator_Left->next = Iterator_Right;
 		free(Temp);
-		list->Size--;
-		return list;
+		(*list)->Size--;
+		return;
 	}
 
 }
