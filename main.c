@@ -67,12 +67,12 @@ void CreateNewPlanet(planet_type **new_planet, BOOL create_from_exist, char* pla
 BOOL SendPlanetToServer(HWND hDlg)
 {
 	if (!connected) {
-		MessageBox(hDlg, TEXT("No current connection to server, cannot send planet/planets"), TEXT("Error"), (MB_ICONERROR | MB_OK));
+		MessageBox(hDlg, TEXT("Client: No current connection to server, cannot send planet/planets"), TEXT("Error"), (MB_ICONERROR | MB_OK));
 		return FALSE;
 	}
 	int item_count = SendDlgItemMessage(hDlg, LOCAL_PLANETS_LB, LB_GETSELCOUNT, 0, 0);
 	if (item_count < 1) {
-		MessageBox(hDlg, TEXT("No planet was selected. None was sent."), TEXT("Error"), (MB_ICONERROR | MB_OK));
+		MessageBox(hDlg, TEXT("Client: No planet was selected. None was sent."), TEXT("Error"), (MB_ICONERROR | MB_OK));
 		return FALSE;
 	}
 	int *indexes = malloc(sizeof(int) * item_count);
@@ -224,41 +224,21 @@ BOOL LoadLocalPNames(HWND hDlg)
 	return TRUE;
 }
 
-BOOL ReadMailslotMessage(HWND hDlg)
-{
-	DWORD next_msg_size, result, bytes_read;
-	char* display_string = malloc(64);
-	MsgStruct msg;
-	result = GetMailslotInfo(h_client_mailslot, NULL, &next_msg_size, NULL, NULL);
-	if (result != 0)
-	{
-		bytes_read = mailslotRead(h_client_mailslot, &msg, next_msg_size);
-		EnterCriticalSection(&crit);
-		new_message = FALSE;
-		LeaveCriticalSection(&crit);
-		if (bytes_read < 1)
-		{
-			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Failure reading from mailslot. Bytes read were lesser than 1.");
-			return FALSE;
-		}
-
-		else
-		{
-			sprintf(display_string, "%s: %s", msg.PlanName, msg.Message);
-			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, display_string);
-			int index = SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_FINDSTRING, -1, msg.PlanName);
-			SendDlgItemMessage(hDlg, ALIVE_SENT_LB, LB_DELETESTRING, index, 0);
-			return TRUE;
-		}
-	}
-	else
-	{
-		free(display_string);
-		SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "GetMailSlotInfo failed, returned zero.");
-		return FALSE;
-	}
-	return TRUE;
-}
+//void ReadMailslotMessage()
+//{
+//	DWORD next_msg_size, result, bytes_read, msg_count;
+//
+//	
+//	
+//	else
+//	{
+//		SendDlgItemMessage(h_dlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, display_string);
+//		int index = SendDlgItemMessage(h_dlgs[0], ALIVE_SENT_LB, LB_FINDSTRING, -1, msg.PlanName);
+//		SendDlgItemMessage(h_dlgs[0], ALIVE_SENT_LB, LB_DELETESTRING, index, 0);
+//	}					
+//
+//	return;
+//}
 /*New planet dialog helper functions - END*/
 
 /*Main Dialog Window*/
@@ -268,16 +248,16 @@ INT_PTR CALLBACK PlanetStatusDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam
 	{
 		case WM_INITDIALOG:
 		{
-			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connecting to server...");
+			SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Connecting to server...");
 			h_mailslot_server = mailslotConnect("mailbox");
 			if (h_mailslot_server != INVALID_HANDLE_VALUE)
 			{
-				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to server succeded.");
+				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Connection to server succeded.");
 				connected = TRUE;
 			}
 			else
 			{
-				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Connection to server failed.");
+				SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Connection to server failed.");
 				connected = FALSE;
 			}
 			sprintf(counter_text, "Number of Local Planets: %d", lpc);
@@ -295,11 +275,11 @@ INT_PTR CALLBACK PlanetStatusDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam
 					if (SendPlanetToServer(hDlg))
 					{
 						SendMessage(h_dlgs[0], MY_LOAD_PLANETS, NULL, NULL);
-						MessageBox(hDlg, TEXT("Planet/Planets were sent to server successfully."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+						SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Planet/Planets were sent to the server successfully.");
 					}
 					else
 					{
-						MessageBox(hDlg, TEXT("Planet/Planets were sent to server failed."), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+						SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Planet/Planets were not sent to the server successfully.");
 					}
 					return TRUE;
 					break;
@@ -309,13 +289,13 @@ INT_PTR CALLBACK PlanetStatusDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam
 				{
 					if (LoadFile())
 					{
-						MessageBox(hDlg, TEXT("Local planets was loaded from file"), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+						SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Local planets was loaded from file");
 						SendMessage(hDlg, MY_LOAD_PLANETS, 0, 0);
 						return TRUE;
 					}
 					else
 					{
-						MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Load from file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
+						SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Invalid handle value was returned, Source: Load from file.");
 						return TRUE;
 					}
 					break;
@@ -325,12 +305,12 @@ INT_PTR CALLBACK PlanetStatusDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam
 				{				
 					if (!SaveFile(hDlg))
 					{
-						MessageBox(hDlg, TEXT("Invalid handle value was returned, Source: Save to file."), TEXT("ERROR"), (MB_ICONEXCLAMATION | MB_OK));
+						SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Invalid handle value was returned, Source: Save to file.");
 						return TRUE;
 					}
 					else
 					{
-						MessageBox(hDlg, TEXT("Local planets was saved to file"), TEXT("Info"), (MB_ICONINFORMATION | MB_OK));
+						SendDlgItemMessage(hDlg, SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Local planets was saved to file.");
 						return TRUE;
 					}
 					break;
@@ -354,11 +334,7 @@ INT_PTR CALLBACK PlanetStatusDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam
 
 		case MY_MSG:
 		{
-			if (ReadMailslotMessage(hDlg))
-				return TRUE;
-			else
-				return FALSE;
-
+			SendDlgItemMessage(h_dlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, lparam);
 			break;
 		}
 	
@@ -424,7 +400,15 @@ INT_PTR CALLBACK NewPlanetDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam, L
 					break;
 				}
 			}
+			break;
 		}
+		case WM_CLOSE:
+		{
+			dlg_hidden = TRUE;
+			ShowWindow(h_dlgs[1], SW_HIDE);
+			break;
+		}
+
 		default:
 		{
 			return FALSE;
@@ -435,7 +419,9 @@ INT_PTR CALLBACK NewPlanetDialogProcedure(HWND hDlg, UINT uMsg, WPARAM wParam, L
 /*Function run on seperate thread, listning on client mailslot.*/
 void ListenForMessage(char* proc_id)
 {
-	DWORD msg_count = 0, result = 0;
+	DWORD msg_count = 0, result = 0, bytes_read, next_msg_size;
+	MsgStruct msg;
+	char* display_string = malloc(64);
 	h_client_mailslot = mailslotCreate(proc_id);
 	while (TRUE)
 	{
@@ -444,9 +430,14 @@ void ListenForMessage(char* proc_id)
 		{
 			if (msg_count > 0)
 			{
-				EnterCriticalSection(&crit);
-				new_message = TRUE;
-				LeaveCriticalSection(&crit);
+				bytes_read = mailslotRead(h_client_mailslot, &msg, &next_msg_size);
+				if (bytes_read < 1)
+				{
+					SendDlgItemMessage(h_dlgs[0], SERV_MSG_LIST, LB_ADDSTRING, 0, "Client: Failure reading from mailslot. Bytes read were lesser than 1.");
+					return;
+				}
+				sprintf(display_string, "Server: %s: %s", msg.PlanName, msg.Message);
+				SendMessage(h_dlgs[0], MY_MSG, NULL, display_string);
 			}
 		}
 		else
@@ -490,9 +481,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpszCmdLi
 		{
 			return -1;
 		}
-		if (new_message)
+		if (msg.message == MY_MSG)
 		{
-			msg.message = MY_MSG;
+
 		}
 		if (!IsDialogMessage(h_dlgs[0], &msg) && !IsDialogMessage(h_dlgs[1], &msg))
 		{
